@@ -1,0 +1,16 @@
+# BERT 意圖分類器依賴
+# M1 Mac 和 Ubuntu RTX 3060 通用
+
+# PyTorch (會根據平台自動選擇版本)
+torch>=2.0.0
+
+# Transformers
+transformers>=4.35.0
+tokenizers>=0.15.0
+
+# 科學計算
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# 資料處理
+tqdm>=4.65.0

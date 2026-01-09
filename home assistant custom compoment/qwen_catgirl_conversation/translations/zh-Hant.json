@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "設定 Qwen Catgirl Conversation",
+        "description": "設定 Qwen 貓娘對話助手",
+        "data": {
+          "name": "名稱",
+          "model_url": "模型 API 網址",
+          "fallback_keywords": "Fallback 關鍵字",
+          "removable_keywords": "可移除關鍵字"
+        },
+        "data_description": {
+          "name": "對話助手的顯示名稱",
+          "model_url": "Qwen 模型 API 的完整網址（例如：http://192.168.0.212:8123）",
+          "fallback_keywords": "包含這些關鍵字的請求會直接交給 Gemini 處理。可以新增/刪除多個關鍵字，也可以輸入自訂關鍵字",
+          "removable_keywords": "這些關鍵字會被識別後從請求中移除再送給 Gemini（例如：使用 Gemini, 用 Gemini, 幫我）"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Qwen Catgirl Conversation 選項",
+        "description": "調整 Qwen 貓娘對話助手的設定",
+        "data": {
+          "model_url": "模型 API 網址",
+          "fallback_keywords": "Fallback 關鍵字",
+          "removable_keywords": "可移除關鍵字"
+        },
+        "data_description": {
+          "model_url": "Qwen 模型 API 的完整網址",
+          "fallback_keywords": "包含這些關鍵字的請求會直接交給 Gemini 處理，繞過 Qwen。可以新增/刪除多個關鍵字，也可以輸入自訂關鍵字（例如：播放, 暫停, 書房溫度, nest hub）",
+          "removable_keywords": "這些關鍵字會被識別後從請求中移除再送給 Gemini。可以新增/刪除多個關鍵字，也可以輸入自訂關鍵字（例如：使用 Gemini, 用 Gemini, 幫我）"
+        }
+      }
+    }
+  }
+}

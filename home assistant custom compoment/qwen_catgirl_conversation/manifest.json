@@ -1,0 +1,12 @@
+{
+  "domain": "qwen_catgirl_conversation",
+  "name": "Qwen Catgirl Conversation Agent",
+  "version": "1.0.0",
+  "documentation": "https://github.com/yourusername/qwen-catgirl-conversation",
+  "requirements": ["aiohttp>=3.8.0"],
+  "codeowners": ["@yourusername"],
+  "dependencies": ["conversation"],
+  "iot_class": "local_polling",
+  "config_flow": true,
+  "integration_type": "service"
+}
