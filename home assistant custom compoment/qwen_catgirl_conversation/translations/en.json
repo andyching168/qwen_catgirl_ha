@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Qwen Catgirl Conversation",
+        "description": "Configure Qwen Catgirl conversation assistant",
+        "data": {
+          "name": "Name",
+          "model_url": "Model API URL",
+          "fallback_keywords": "Fallback Keywords",
+          "removable_keywords": "Removable Keywords"
+        },
+        "data_description": {
+          "name": "Display name for the conversation assistant",
+          "model_url": "Full URL to Qwen model API (e.g., http://192.168.0.212:8123)",
+          "fallback_keywords": "Requests containing these keywords will be handled by Gemini. You can add/remove multiple keywords and enter custom values",
+          "removable_keywords": "These keywords will be removed from the request before sending to Gemini (e.g., use Gemini, with Gemini, please)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Qwen Catgirl Conversation Options",
+        "description": "Adjust Qwen Catgirl conversation assistant settings",
+        "data": {
+          "model_url": "Model API URL",
+          "fallback_keywords": "Fallback Keywords",
+          "removable_keywords": "Removable Keywords"
+        },
+        "data_description": {
+          "model_url": "Full URL to Qwen model API",
+          "fallback_keywords": "Requests containing these keywords will bypass Qwen and go directly to Gemini. You can add/remove multiple keywords and enter custom values (e.g., play, pause, bedroom temperature, nest hub)",
+          "removable_keywords": "These keywords will be removed from the request before sending to Gemini. You can add/remove multiple keywords and enter custom values (e.g., use Gemini, with Gemini, please)"
+        }
+      }
+    }
+  }
+}

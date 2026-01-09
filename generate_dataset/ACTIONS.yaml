@@ -1,0 +1,1133 @@
+# ==============================================================================
+# Qwen Catgirl Voice Assistant - ACTION Specification
+# 日和喵語音助理 - ACTION 定義白皮書
+# ==============================================================================
+# 版本: v3.0
+# 更新日期: 2025-10-29
+# 說明: 定義所有支援的 ACTION、SLOT 參數和優先級,把slot指定中文操作
+# ==============================================================================
+
+metadata:
+  version: "4.0"
+  last_updated: "2025-11-07"
+  total_actions: 21
+  description: "Qwen2.5-7B 貓娘語音助理的完整 ACTION 定義規範"
+  
+  # 特殊處理說明
+  special_handling:
+    - name: "窗簾控制"
+      action: "cover_control"
+      method: "使用 script.control_cover 統一處理"
+      reason: "需要特殊邏輯控制窗簾開關"
+
+# ==============================================================================
+# ACTION 分類與優先級
+# ==============================================================================
+
+training_priority:
+  high:
+    description: "核心功能，需要 800-1000 條訓練資料"
+    actions:
+      - turn_on
+      - turn_off
+      - light_set
+      - cover_control
+      - search
+      - media_pause
+      - media_unpause
+      - set_volume
+    estimated_samples: 6400-8000
+  
+  medium:
+    description: "常用功能，需要 300-500 條訓練資料"
+    actions:
+      - get_state
+      - climate_set_temp
+      - media_next
+      - media_previous
+      - volume_up
+      - volume_down
+      - vacuum_start
+      - vacuum_return
+      - get_weather
+      - get_time
+    estimated_samples: 3000-5000
+  
+  low:
+    description: "不常用功能，需要 100-200 條訓練資料"
+    actions:
+      - climate_get_temp
+      - vacuum_pause
+      - get_date
+      - broadcast
+    estimated_samples: 400-800
+
+# ==============================================================================
+# 通用 Slot 定義
+# ==============================================================================
+
+common_slots:
+  name:
+    type: string
+    description: "設備中文名稱（不含區域）"
+    examples: ["大燈", "風扇", "冷氣", "窗簾", "掃地機器人"]
+    note: "Home Assistant 會在指定 area 內查找此名稱"
+  
+  area:
+    type: string
+    description: "區域中文名稱"
+    examples: ["書房", "客廳", "臥室", "兒童房", "廚房"]
+    note: "必須與 Home Assistant 中設定的 Area 名稱一致"
+  
+  domain:
+    type: string
+    description: "設備類型（用於批次操作）"
+    examples: ["light", "switch", "fan", "cover"]
+    use_case: "開啟某區域的所有某類設備"
+
+# ==============================================================================
+# ACTION 詳細定義
+# ==============================================================================
+
+actions:
+  
+  # ============================================================================
+  # 1. 基礎設備控制
+  # ============================================================================
+  
+  - name: turn_on
+    category: basic_control
+    priority: high
+    description: "開啟設備"
+    intent: "HassTurnOn"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          description: "設備中文名稱"
+          example: "大燈"
+      
+      optional:
+        - name: area
+          type: string
+          description: "區域名稱（強烈建議提供）"
+          example: "書房"
+        
+        - name: domain
+          type: string
+          description: "設備類型（用於 area + domain 批次操作）"
+          example: "light"
+    
+    output_format: |
+      ACTION turn_on
+      name <設備名稱>
+      area <區域名稱>
+    
+    examples:
+      - input: "打開書房大燈"
+        output: |
+          好的，正在開啟書房大燈
+          ACTION turn_on
+          name 大燈
+          area 書房
+      
+      - input: "開燈"
+        output: |
+          好的，正在開燈
+          ACTION turn_on
+          name 燈
+          area 書房
+        note: "需要從 context 推斷區域，或使用當前衛星所在區域"
+      
+      - input: "打開客廳所有燈"
+        output: |
+          好的，正在開啟客廳的所有燈
+          ACTION turn_on
+          domain light
+          area 客廳
+      
+      - input: "開啟臥室風扇"
+        output: |
+          好的，正在開啟臥室風扇
+          ACTION turn_on
+          name 風扇
+          area 臥室
+    
+    ha_intent_matching:
+      description: "Home Assistant 會在指定 area 內查找名稱匹配的設備"
+      fuzzy_match: true
+      example: "name='大燈' + area='書房' → 自動匹配 light.da_deng"
+  
+  # --------------------------------------------------------------------------
+  
+  - name: turn_off
+    category: basic_control
+    priority: high
+    description: "關閉設備"
+    intent: "HassTurnOff"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          description: "設備中文名稱"
+          example: "電扇"
+      
+      optional:
+        - name: area
+          type: string
+          description: "區域名稱"
+          example: "書房"
+        
+        - name: domain
+          type: string
+          description: "設備類型"
+          example: "fan"
+    
+    output_format: |
+      ACTION turn_off
+      name <設備名稱>
+      area <區域名稱>
+    
+    examples:
+      - input: "關閉書房大燈"
+        output: |
+          好的，正在關閉書房大燈
+          ACTION turn_off
+          name 大燈
+          area 書房
+      
+      - input: "關掉風扇"
+        output: |
+          好的，正在關閉風扇
+          ACTION turn_off
+          name 風扇
+      
+      - input: "關閉客廳所有燈"
+        output: |
+          好的，正在關閉客廳所有燈
+          ACTION turn_off
+          domain light
+          area 客廳
+    
+    special_case:
+      - device: "climate (冷氣)"
+        note: "關閉冷氣時，ESPHome 會自動執行防霉關機流程"
+  
+  # --------------------------------------------------------------------------
+  
+  - name: get_state
+    category: basic_control
+    priority: medium
+    description: "查詢設備狀態"
+    intent: "HassGetState"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          description: "設備名稱"
+          example: "大門鎖"
+      
+      optional:
+        - name: area
+          type: string
+          example: "玄關"
+    
+    output_format: |
+      ACTION get_state
+      name <設備名稱>
+      area <區域名稱>
+    
+    examples:
+      - input: "大門有鎖嗎？"
+        output: |
+          讓我看看喵
+          ACTION get_state
+          name 大門鎖
+      
+      - input: "書房燈現在是什麼狀態？"
+        output: |
+          查詢中喵
+          ACTION get_state
+          name 大燈
+          area 書房
+    
+    returns: "設備的當前狀態和屬性"
+  
+  # ============================================================================
+  # 2. 燈光控制
+  # ============================================================================
+  
+  - name: light_set
+    category: light_control
+    priority: high
+    description: "設定燈光亮度或顏色"
+    intent: "HassLightSet"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          description: "燈光名稱"
+          example: "大燈"
+      
+      optional:
+        - name: area
+          type: string
+          example: "書房"
+        
+        - name: brightness
+          type: integer
+          range: "0-100"
+          description: "亮度百分比"
+          example: 80
+        
+        - name: color
+          type: string
+          description: "顏色名稱"
+          example: "暖白"
+          values: ["紅色", "藍色", "綠色", "黃色", "暖白", "冷白", "紫色", "橙色"]
+        
+        - name: color_temp
+          type: integer
+          range: "2000-6500"
+          unit: "Kelvin"
+          description: "色溫"
+          example: 4000
+    
+    note: "至少需要提供 brightness, color, color_temp 其中一個參數"
+    
+    output_format: |
+      ACTION light_set
+      name <燈光名稱>
+      area <區域名稱>
+      brightness <0-100>
+      [color <顏色名稱>]
+      [color_temp <色溫值>]
+    
+    examples:
+      - input: "把書房燈調到 80%"
+        output: |
+          好的，正在調整書房大燈亮度到 80%
+          ACTION light_set
+          name 大燈
+          area 書房
+          brightness 80
+      
+      - input: "客廳燈改成暖白色"
+        output: |
+          好的，正在將客廳燈調成暖白色
+          ACTION light_set
+          name 燈
+          area 客廳
+          color 暖白
+      
+      - input: "大燈調成閱讀模式"
+        output: |
+          好的，正在調整為閱讀模式
+          ACTION light_set
+          name 大燈
+          area 書房
+          brightness 90
+          color_temp 4000
+  
+  # ============================================================================
+  # 3. 窗簾控制
+  # ============================================================================
+  
+  - name: cover_control
+    category: cover_control
+    priority: high
+    description: "窗簾控制"
+    intent: "HassSetPosition"  # 或 HassTurnOn/Off
+    
+    special_handling:
+      type: "可選使用 script.control_cover"
+      reason: "如有特殊控制邏輯（例如分段開合）"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          description: "窗簾名稱"
+          example: "窗簾"
+        
+        - name: command
+          type: string
+          description: "控制命令"
+          values: ["open", "close", "stop"]
+          example: "open"
+      
+      optional:
+        - name: area
+          type: string
+          example: "書房"
+        
+        - name: position
+          type: integer
+          range: "0-100"
+          description: "目標位置（0=關閉，100=開啟）"
+          example: 50
+    
+    output_format: |
+      ACTION cover_control
+      name <窗簾名稱>
+      area <區域名稱>
+      command <open/close/stop>
+      [position <0-100>]
+    
+    examples:
+      - input: "打開客廳窗簾"
+        output: |
+          好的，正在開啟客廳窗簾
+          ACTION cover_control
+          name 窗簾
+          area 客廳
+          command open
+      
+      - input: "關閉書房窗簾"
+        output: |
+          好的，正在關閉書房窗簾
+          ACTION cover_control
+          name 窗簾
+          area 書房
+          command close
+      
+      - input: "把窗簾開到一半"
+        output: |
+          好的，正在調整窗簾位置到 50%
+          ACTION cover_control
+          name 窗簾
+          area 書房
+          position 50
+      
+      - input: "停止窗簾"
+        output: |
+          好的，停止窗簾移動
+          ACTION cover_control
+          name 窗簾
+          command stop
+  
+  # ============================================================================
+  # 4. 氣候控制
+  # ============================================================================
+  
+  - name: climate_set_temp
+    category: climate_control
+    priority: medium
+    description: "設定溫度"
+    intent: "HassClimateSetTemperature"
+    
+    slots:
+      required:
+        - name: area
+          type: string
+          description: "區域名稱"
+          example: "書房"
+        
+        - name: temperature
+          type: float
+          unit: "°C"
+          description: "目標溫度（攝氏）"
+          example: 25
+      
+      optional:
+        - name: name
+          type: string
+          description: "冷氣名稱（通常不需要）"
+          example: "冷氣"
+    
+    output_format: |
+      ACTION climate_set_temp
+      name <冷氣名稱>
+      area <區域名稱>
+      temperature <溫度值>
+    
+    examples:
+      - input: "把書房冷氣設定到 25 度"
+        output: |
+          好的，正在設定書房冷氣溫度到 25 度
+          ACTION climate_set_temp
+          area 書房
+          temperature 25
+      
+      - input: "兒童房冷氣溫度調到 26 度"
+        output: |
+          好的，正在調整兒童房冷氣溫度到 26 度
+          ACTION climate_set_temp
+          area 兒童房
+          temperature 26
+  
+  # --------------------------------------------------------------------------
+  
+  - name: climate_set_mode
+    category: climate_control
+    priority: medium
+    description: "設定冷氣模式"
+    intent: "HassClimateSetMode"
+    
+    slots:
+      required:
+        - name: area
+          type: string
+          description: "區域名稱"
+          example: "書房"
+        
+        - name: mode
+          type: string
+          description: "運作模式"
+          values: ["cool", "heat", "fan_only", "dry", "auto", "off"]
+          example: "cool"
+      
+      optional:
+        - name: name
+          type: string
+          description: "冷氣名稱（通常不需要）"
+          example: "冷氣"
+    
+    output_format: |
+      ACTION climate_set_mode
+      area <區域名稱>
+      mode <cool/heat/fan_only/dry/auto/off>
+      [name <冷氣名稱>]
+    
+    examples:
+      - input: "把書房冷氣切換到冷氣模式"
+        output: |
+          好的喵！正在切換書房冷氣到冷氣模式喵！
+          ACTION climate_set_mode
+          area 書房
+          mode cool
+      
+      - input: "客廳冷氣改成送風"
+        output: |
+          好的喵！正在切換客廳冷氣到送風模式喵！
+          ACTION climate_set_mode
+          area 客廳
+          mode fan_only
+      
+      - input: "臥室冷氣設定成暖氣"
+        output: |
+          好的喵！正在設定臥室冷氣為暖氣模式喵！
+          ACTION climate_set_mode
+          area 臥室
+          mode heat
+      
+      - input: "把書房冷氣改成除濕模式"
+        output: |
+          好的喵！正在切換書房冷氣到除濕模式喵！
+          ACTION climate_set_mode
+          area 書房
+          mode dry
+      
+      - input: "客廳冷氣設定自動模式"
+        output: |
+          好的喵！正在設定客廳冷氣為自動模式喵！
+          ACTION climate_set_mode
+          area 客廳
+          mode auto
+    
+    note: "mode 值說明：cool=冷氣, heat=暖氣, fan_only=送風, dry=除濕, auto=自動, off=關閉"
+  
+  # --------------------------------------------------------------------------
+  
+  - name: climate_get_temp
+    category: climate_control
+    priority: low
+    description: "查詢溫度"
+    intent: "HassGetState"
+    
+    slots:
+      required:
+        - name: area
+          type: string
+          description: "區域名稱"
+          example: "客廳"
+      
+      optional:
+        - name: name
+          type: string
+          description: "冷氣名稱（通常不需要）"
+          example: "冷氣"
+    
+    output_format: |
+      ACTION climate_get_temp
+      area <區域名稱>
+      [name <冷氣名稱>]
+    
+    examples:
+      - input: "客廳現在幾度？"
+        output: |
+          讓我看看喵
+          ACTION climate_get_temp
+          area 客廳
+      
+      - input: "書房溫度多少？"
+        output: |
+          讓我看看書房溫度喵
+          ACTION climate_get_temp
+          area 書房
+  
+  # ============================================================================
+  # 5. 媒體播放器
+  # ============================================================================
+  
+  - name: media_pause
+    category: media_player
+    priority: high
+    description: "暫停媒體播放"
+    intent: "HassMediaPause"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          example: "Nest Hub"
+      
+      optional:
+        - name: area
+          type: string
+          example: "客廳"
+    
+    output_format: |
+      ACTION media_pause
+      name <播放器名稱>
+      area <區域名稱>
+    
+    examples:
+      - input: "暫停Nest Hub"
+        output: |
+          好的，暫停播放喵
+          ACTION media_pause
+          name Nest Hub
+      
+      - input: "暫停客廳音樂"
+        output: |
+          好的，暫停客廳音樂喵
+          ACTION media_pause
+          name 音響
+          area 客廳
+  
+  # --------------------------------------------------------------------------
+  
+  - name: media_unpause
+    category: media_player
+    priority: high
+    description: "繼續播放媒體"
+    intent: "HassMediaUnpause"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          example: "HomePod Mini"
+    
+    output_format: |
+      ACTION media_unpause
+      name <播放器名稱>
+    
+    examples:
+      - input: "繼續播放"
+        output: |
+          好的，繼續播放喵
+          ACTION media_unpause
+          name HomePod Mini
+  
+  # --------------------------------------------------------------------------
+  
+  - name: media_next
+    category: media_player
+    priority: medium
+    description: "下一首/下一個"
+    intent: "HassMediaNext"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+    
+    output_format: |
+      ACTION media_next
+      name <播放器名稱>
+    
+    examples:
+      - input: "下一首"
+        output: |
+          好的，下一首喵
+          ACTION media_next
+          name HomePod Mini
+  
+  # --------------------------------------------------------------------------
+  
+  - name: media_previous
+    category: media_player
+    priority: medium
+    description: "上一首/上一個"
+    intent: "HassMediaPrevious"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+    
+    output_format: |
+      ACTION media_previous
+      name <播放器名稱>
+    
+    examples:
+      - input: "上一首"
+        output: |
+          好的，上一首喵
+          ACTION media_previous
+          name Nest Hub
+  
+  # --------------------------------------------------------------------------
+  
+  - name: set_volume
+    category: media_player
+    priority: high
+    description: "設定音量（絕對值）"
+    intent: "HassSetVolume"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          example: "音響"
+        
+        - name: volume
+          type: integer
+          range: "0-100"
+          description: "音量百分比"
+          example: 50
+      
+      optional:
+        - name: area
+          type: string
+    
+    output_format: |
+      ACTION set_volume
+      name <播放器名稱>
+      area <區域名稱>
+      volume <0-100>
+    
+    examples:
+      - input: "把音響音量設定到 50"
+        output: |
+          好的，正在設定音量到 50
+          ACTION set_volume
+          name 音響
+          volume 50
+      
+      - input: "客廳音量調到 30%"
+        output: |
+          好的，正在調整客廳音量到 30
+          ACTION set_volume
+          name 音響
+          area 客廳
+          volume 30
+  
+  # --------------------------------------------------------------------------
+  
+  - name: volume_up
+    category: media_player
+    priority: medium
+    description: "增加音量（相對值）"
+    intent: "HassVolumeUp"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+      
+      optional:
+        - name: amount
+          type: integer
+          default: 10
+          description: "增加量（百分比）"
+    
+    output_format: |
+      ACTION volume_up
+      name <播放器名稱>
+      [amount <增加量>]
+    
+    examples:
+      - input: "音量大聲一點"
+        output: |
+          好的，增加音量喵
+          ACTION volume_up
+          name 音響
+      
+      - input: "音量增加 20"
+        output: |
+          好的，增加音量 20
+          ACTION volume_up
+          name Nest Hub
+          amount 20
+  
+  # --------------------------------------------------------------------------
+  
+  - name: volume_down
+    category: media_player
+    priority: medium
+    description: "減少音量（相對值）"
+    intent: "HassVolumeDown"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+      
+      optional:
+        - name: amount
+          type: integer
+          default: 10
+    
+    output_format: |
+      ACTION volume_down
+      name <播放器名稱>
+      [amount <減少量>]
+    
+    examples:
+      - input: "音量小聲一點"
+        output: |
+          好的，降低音量喵
+          ACTION volume_down
+          name 音響
+  
+  # ============================================================================
+  # 6. 清潔設備
+  # ============================================================================
+  
+  - name: vacuum_start
+    category: vacuum
+    priority: medium
+    description: "啟動掃地機器人"
+    intent: "HassVacuumStart"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          example: "掃地機器人"
+      
+      optional:
+        - name: area
+          type: string
+          description: "指定清掃區域"
+          example: "客廳"
+    
+    output_format: |
+      ACTION vacuum_start
+      name <掃地機器人名稱>
+      [area <清掃區域>]
+    
+    examples:
+      - input: "開始掃地"
+        output: |
+          好的，開始掃地囉喵
+          ACTION vacuum_start
+          name 掃地機器人
+      
+      - input: "掃客廳"
+        output: |
+          好的，開始清掃客廳喵
+          ACTION vacuum_start
+          name 掃地機器人
+          area 客廳
+  
+  # --------------------------------------------------------------------------
+  
+  - name: vacuum_return
+    category: vacuum
+    priority: medium
+    description: "掃地機器人回充"
+    intent: "HassVacuumReturnToBase"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+          example: "掃地機器人"
+    
+    output_format: |
+      ACTION vacuum_return
+      name <掃地機器人名稱>
+    
+    examples:
+      - input: "掃地機器人回家"
+        output: |
+          好的，掃地機器人回家囉喵
+          ACTION vacuum_return
+          name 掃地機器人
+  
+  # --------------------------------------------------------------------------
+  
+  - name: vacuum_pause
+    category: vacuum
+    priority: low
+    description: "暫停掃地機器人"
+    
+    slots:
+      required:
+        - name: name
+          type: string
+    
+    output_format: |
+      ACTION vacuum_pause
+      name <掃地機器人名稱>
+    
+    examples:
+      - input: "暫停掃地"
+        output: |
+          好的，暫停掃地喵
+          ACTION vacuum_pause
+          name 掃地機器人
+  
+  # ============================================================================
+  # 7. 資訊查詢
+  # ============================================================================
+  
+  - name: get_weather
+    category: information
+    priority: medium
+    description: "查詢天氣"
+    
+    slots:
+      optional:
+        - name: location
+          type: string
+          description: "地點名稱（默認為 HA 設定的位置）"
+          example: "台北"
+    
+    output_format: |
+      ACTION get_weather
+      [location <地點>]
+    
+    examples:
+      - input: "今天天氣如何？"
+        output: |
+          讓我看看今天天氣喵
+          ACTION get_weather
+      
+      - input: "台北天氣怎麼樣？"
+        output: |
+          查詢台北天氣喵
+          ACTION get_weather
+          location 台北
+  
+  # --------------------------------------------------------------------------
+  
+  - name: get_time
+    category: information
+    priority: medium
+    description: "查詢時間"
+    
+    slots: {}
+    
+    output_format: |
+      ACTION get_time
+    
+    examples:
+      - input: "現在幾點？"
+        output: |
+          讓我看看現在時間喵
+          ACTION get_time
+  
+  # --------------------------------------------------------------------------
+  
+  - name: get_date
+    category: information
+    priority: low
+    description: "查詢日期"
+    
+    slots: {}
+    
+    output_format: |
+      ACTION get_date
+    
+    examples:
+      - input: "今天幾號？"
+        output: |
+          讓我看看今天日期喵
+          ACTION get_date
+  
+  # ============================================================================
+  # 8. 通訊功能
+  # ============================================================================
+  
+  - name: broadcast
+    category: communication
+    priority: low
+    description: "廣播訊息"
+    
+    slots:
+      required:
+        - name: message
+          type: string
+          description: "廣播內容"
+          example: "晚餐準備好了喵！"
+      
+      optional:
+        - name: target
+          type: string
+          description: "目標衛星設備（默認全部）"
+          example: "bedroom"
+    
+    output_format: |
+      ACTION broadcast
+      message <廣播內容>
+      [target <目標設備>]
+    
+    examples:
+      - input: "廣播：晚餐準備好了"
+        output: |
+          好的，開始廣播喵
+          ACTION broadcast
+          message 晚餐準備好了喵！
+      
+      - input: "告訴臥室該睡覺了"
+        output: |
+          好的，通知臥室喵
+          ACTION broadcast
+          message 該睡覺囉！
+          target bedroom
+  
+  # ============================================================================
+  # 9. 搜尋功能
+  # ============================================================================
+  
+  - name: search
+    category: search
+    priority: high
+    description: "搜尋資訊"
+    
+    slots:
+      required:
+        - name: query
+          type: string
+          description: "搜尋關鍵字"
+          example: "LINE虛擬人像設定教學"
+    
+    output_format: |
+      ACTION search
+      query <搜尋內容>
+    
+    examples:
+      - input: "如何設定 LINE 的虛擬人像？"
+        output: |
+          讓我幫你搜尋喵
+          ACTION search
+          query LINE虛擬人像設定教學
+      
+      - input: "搜尋台北明天天氣"
+        output: |
+          搜尋中喵
+          ACTION search
+          query 台北明天天氣
+
+
+# ==============================================================================
+# System Prompt 模板（v3.0）
+# ==============================================================================
+
+system_prompt: |
+  你是日和喵，可愛的貓娘智慧家居助理喵！
+  
+  輸出格式：
+  <回應文字（加入「喵」增加萌感）>
+  ACTION <action_name>
+  name <設備中文名稱>
+  area <區域中文名稱>
+  [其他參數...]
+  
+  可用 ACTION：
+  - turn_on/off: 開關設備 (name, area)
+  - light_set: 調整燈光 (name, area, brightness 0-100, color 顏色名稱)
+  - cover_control: 控制窗簾 (name, area, command open/close/stop, position 0-100)
+  - climate_set_mode: 設定冷氣模式 (area, mode cool/heat/fan_only/dry/auto/off)
+  - climate_set_temp: 設定溫度 (name, area, temperature 數值)
+  - media_pause/unpause/next/previous: 媒體控制 (name, area)
+  - set_volume: 設定音量 (name, area, volume 0-100)
+  - volume_up/down: 調整音量 (name, amount)
+  - vacuum_start/return/pause: 掃地機器人 (name, area)
+  - get_weather/time/date: 資訊查詢 (location)
+  - broadcast: 廣播訊息 (message, target)
+  - search: 搜尋資訊 (query)
+  
+  重要原則：
+  1. 只輸出中文 name 和 area，不要輸出 entity_id
+  2. name 是設備名稱（例如：大燈、風扇、冷氣）
+  3. area 是區域名稱（例如：書房、客廳、臥室）
+  4. 純聊天時不輸出 ACTION
+  5. 回應要親切可愛，適當加入「喵」
+  
+  範例：
+  用戶：關掉書房大燈
+  助理：好的，正在關閉書房大燈喵
+  ACTION turn_off
+  name 大燈
+  area 書房
+  
+  用戶：你好
+  助理：你好呀主人！有什麼需要幫忙的嗎喵？
+
+
+# ==============================================================================
+# 訓練資料統計
+# ==============================================================================
+
+training_data_plan:
+  total_estimated: "8000-13800 條"
+  
+  breakdown:
+    phase_1_high_priority:
+      actions: 8
+      samples_per_action: "800-1000"
+      total: "6400-8000"
+      duration: "主要訓練階段"
+    
+    phase_2_medium_priority:
+      actions: 10
+      samples_per_action: "300-500"
+      total: "3000-5000"
+      duration: "擴展訓練階段"
+    
+    phase_3_low_priority:
+      actions: 4
+      samples_per_action: "100-200"
+      total: "400-800"
+      duration: "補充訓練階段"
+
+# ==============================================================================
+# 實作檢查清單
+# ==============================================================================
+
+implementation_checklist:
+  qwen_api_server:
+    - "[ ] 實作 /v1/chat/completions endpoint"
+    - "[ ] 實作 response parser（解析 ACTION）"
+    - "[ ] 實作多輪對話管理"
+    - "[ ] 載入 Qwen2.5-7B + LoRA 模型"
+  
+  ha_custom_component:
+    - "[ ] 實作 Conversation Agent"
+    - "[ ] 實作 API Client"
+    - "[ ] 實作 Action Executor（21 個 ACTION）"
+    - "[ ] 特殊處理：cover_control 呼叫 script.control_cover"
+    - "[ ] 實作多輪對話支援"
+    - "[ ] 實作工具呼叫自動處理"
+  
+  training_data:
+    - "[ ] 生成高優先級訓練資料（6400-8000 條）"
+    - "[ ] 生成中優先級訓練資料（3000-5000 條）"
+    - "[ ] 生成低優先級訓練資料（400-800 條）"
+    - "[ ] 驗證資料品質"
+  
+  testing:
+    - "[ ] 單元測試每個 ACTION"
+    - "[ ] 整合測試 API Server"
+    - "[ ] 整合測試 HA Component"
+    - "[ ] 端到端測試（語音 → 執行）"
