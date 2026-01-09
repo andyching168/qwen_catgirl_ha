@@ -472,6 +472,107 @@ def qwen_inference(user_input: str, history: list = None) -> str:
     
     return response
 
+def qwen_inference_with_executed_action(user_input: str, intent: str, slots: Dict, history: list = None) -> str:
+    """使用 Qwen 生成動作已執行的回答（類似 fallback 邏輯）"""
+    current_dt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 構建動作描述
+    action_desc_map = {
+        "turn_on": "開啟",
+        "turn_off": "關閉",
+        "get_state": "查詢狀態",
+        "climate_set_mode": "設定模式",
+    }
+    action_desc = action_desc_map.get(intent, "執行")
+    
+    # 構建設備描述
+    device_parts = []
+    if slots.get("area"):
+        device_parts.append(slots["area"])
+    if slots.get("name"):
+        device_parts.append(slots["name"])
+    device_desc = "".join(device_parts) if device_parts else "設備"
+    
+    # 構建系統提示，告訴 LLM 動作已執行
+    action_executed_prompt = f"""你是日和喵，可愛的貓娘智慧家居助理喵！
+
+重要：用戶的請求已經處理完成，你只需要生成一個親切可愛的回應即可。
+
+已執行的動作：{action_desc}{device_desc}
+用戶原始請求：{user_input}
+
+請生成一個自然、親切、可愛的回應，適當加入「喵」，讓用戶知道動作已完成。
+不要輸出 ACTION，不要重複執行動作，只需要回應用戶即可。
+
+範例：
+- 「好的喵！已經幫你關閉書房的床頭燈了，晚安喵～」
+- 「收到喵！書房大燈已經開啟囉～」
+- 「沒問題喵！客廳冷氣已經切換到冷氣模式了～"""
+    
+    messages = [
+        {"role": "system", "content": action_executed_prompt},
+        {"role": "system", "content": f"現在時間: {current_dt}"},
+    ]
+    
+    if history:
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    
+    messages.append({"role": "user", "content": user_input})
+    
+    prompt = qwen_tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
+    inputs = qwen_tokenizer(
+        prompt, 
+        return_tensors="pt",
+        max_length=MAX_SEQ_LENGTH,
+        truncation=True
+    ).to("cuda")
+    
+    outputs = qwen_model.generate(
+        **inputs,
+        max_new_tokens=150,
+        temperature=0.3,
+        top_p=0.95,
+        do_sample=True,
+        pad_token_id=qwen_tokenizer.eos_token_id,
+    )
+    
+    # 不跳過特殊 token，這樣才能正確分割
+    response = qwen_tokenizer.decode(outputs[0], skip_special_tokens=False)
+    
+    # 提取最後一個助理回應
+    if "<|im_start|>assistant" in response:
+        parts = response.split("<|im_start|>assistant")
+        last_response = parts[-1]
+        
+        if "<|im_end|>" in last_response:
+            last_response = last_response.split("<|im_end|>")[0]
+        
+        response = last_response.strip()
+    else:
+        if "assistant\n" in response:
+            parts = response.split("assistant\n")
+            response = parts[-1].strip()
+    
+    # 簡轉繁
+    response = s2t_converter.convert(response)
+    
+    # 移除可能的 ACTION 行（以防萬一）
+    lines = response.split('\n')
+    clean_lines = []
+    for line in lines:
+        if not line.strip().startswith('ACTION '):
+            clean_lines.append(line)
+        else:
+            break  # 遇到 ACTION 就停止
+    
+    return '\n'.join(clean_lines).strip()
+
 def parse_action_from_response(response: str) -> Optional[Dict]:
     """從 Qwen 回應解析 ACTION"""
     lines = response.strip().split('\n')
@@ -593,25 +694,52 @@ async def process_request(request: InferenceRequest):
         
         # Step 2: 判斷是否可以直接使用 BERT 結果
         if should_use_bert(bert_result, request.text):
-            logger.info("⚡ BERT 直接處理（高確定性）")
-            
             intent = bert_result["intent"]
             slots = bert_result["slots"]
             
-            # 生成喵化回應
-            response_text = generate_catgirl_response(intent, slots)
-            raw_response = build_action_string(intent, slots, response_text)
+            # 計算輸入文本長度（不含空格）
+            text_length = len(request.text.replace(" ", ""))
             
-            logger.info(f"📤 BERT 回應: {response_text}")
-            
-            return ActionResult(
-                action=intent,
-                params=slots,
-                response_text=response_text,
-                has_action=True,
-                raw_response=raw_response,
-                processed_by="bert",
-            )
+            # 長度閾值：10字（含）以上使用 LLM 生成回答
+            if text_length >= 10:
+                logger.info(f"⚡ BERT 執行動作 + LLM 生成回答（輸入長度: {text_length}字）")
+                
+                # 使用 LLM 生成自然回答，告訴它動作已執行
+                response_text = qwen_inference_with_executed_action(
+                    request.text, 
+                    intent, 
+                    slots, 
+                    request.history
+                )
+                raw_response = build_action_string(intent, slots, response_text)
+                
+                logger.info(f"📤 混合模式回應: {response_text}")
+                
+                return ActionResult(
+                    action=intent,
+                    params=slots,
+                    response_text=response_text,
+                    has_action=True,
+                    raw_response=raw_response,
+                    processed_by="bert_action_qwen_response",
+                )
+            else:
+                logger.info(f"⚡ BERT 直接處理（高確定性，輸入長度: {text_length}字）")
+                
+                # 生成喵化模板回應
+                response_text = generate_catgirl_response(intent, slots)
+                raw_response = build_action_string(intent, slots, response_text)
+                
+                logger.info(f"📤 BERT 模板回應: {response_text}")
+                
+                return ActionResult(
+                    action=intent,
+                    params=slots,
+                    response_text=response_text,
+                    has_action=True,
+                    raw_response=raw_response,
+                    processed_by="bert",
+                )
         
         # Step 3: 交給 Qwen LLM 處理
         logger.info("🧠 交給 Qwen LLM 處理...")
